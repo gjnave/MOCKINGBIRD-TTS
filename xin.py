@@ -145,4 +145,4 @@ with gr.Blocks() as iface:
     generate_btn.click(text_to_speech, inputs=[text_input, speaker_dropdown, uploaded_speaker, video_url], outputs=audio_output)
     clear_vram_btn.click(manual_clear_vram, inputs=[], outputs=gr.Textbox(label="VRAM Status"))
 
-iface.launch(open_browser=True)
+iface.launch(inbrowser=True)
