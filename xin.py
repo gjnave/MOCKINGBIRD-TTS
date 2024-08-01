@@ -17,7 +17,7 @@ speaker_directory = "xtts-api-server\\speakers"
 
 # Get the list of .wav files in the directory
 def get_speaker_files():
-    return [f for f in os.listdir(speaker_directory) if f.endswith('.wav')]
+    return [f for f in os.listdir(speaker_directory) if f.endswith(('.wav', '.mp3'))]
 
 # Initialize the speaker_wav variable
 speaker_wav = get_speaker_files()[0]
