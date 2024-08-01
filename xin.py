@@ -13,7 +13,7 @@ import gc
 url = "http://localhost:8020/tts_to_audio/"
 
 # Define the directory containing the speaker .wav files
-speaker_directory = "..\\xtts\\speakers"
+speaker_directory = "xtts-api-server\\speakers"
 
 # Get the list of .wav files in the directory
 def get_speaker_files():
@@ -145,4 +145,4 @@ with gr.Blocks() as iface:
     generate_btn.click(text_to_speech, inputs=[text_input, speaker_dropdown, uploaded_speaker, video_url], outputs=audio_output)
     clear_vram_btn.click(manual_clear_vram, inputs=[], outputs=gr.Textbox(label="VRAM Status"))
 
-iface.launch()
+iface.launch(open_browser=True)
