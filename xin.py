@@ -8,6 +8,8 @@ import yt_dlp
 import pynvml
 import torch
 import gc
+import time
+import threading
 
 # Define the TTS server URL
 url = "http://localhost:8020/tts_to_audio/"
@@ -64,8 +66,6 @@ def get_random_video_segment(video_url, segment_duration_ms=8000):
     
     return output_path
 
-
-
 # Function to cut a random 8-second segment
 def cut_random_segment(input_audio, output_audio_path, segment_duration_ms=8000):
     audio = AudioSegment.from_file(input_audio)
@@ -121,28 +121,61 @@ def text_to_speech(text, selected_speaker, uploaded_speaker, video_url):
         if get_gpu_memory_usage() > 0.9:
             clear_gpu_memory()
 
+def is_server_ready():
+    max_attempts = 60  # Adjust this value based on how long you expect the server might take to start
+    attempts = 0
+    while attempts < max_attempts:
+        try:
+            response = requests.get("http://localhost:8020/")
+            if response.status_code in [200, 404]:  # Consider both 200 and 404 as "ready"
+                return True
+        except requests.exceptions.RequestException:
+            pass
+        time.sleep(1)
+        attempts += 1
+    return False
+
 # Gradio interface
 with gr.Blocks() as iface:
-    gr.Markdown("# Cognibuild.ai Quick & Easy TTS ")
-    gr.Markdown("Enter text and hear it spoken aloud. Select a speaker from the dropdown, upload a custom speaker .wav file, or provide a video link.")
+    loading_message = gr.Markdown("# Loading... Please wait for the server to be ready.")
+    main_interface = gr.Group(visible=False)
     
-    with gr.Row():
-        text_input = gr.Textbox(label="Enter Text")
-        speaker_dropdown = gr.Dropdown(label="Select Speaker", choices=get_speaker_files(), value=speaker_wav)
+    def update_gui():
+        if is_server_ready():
+            return {
+                loading_message: gr.update(visible=False),
+                main_interface: gr.update(visible=True)
+            }
+        else:
+            return {
+                loading_message: gr.update(value="# Error: Server not ready. Please check if the server is running."),
+                main_interface: gr.update(visible=False)
+            }
     
-    with gr.Row():
-        uploaded_speaker = gr.File(label="Upload Custom Speaker .wav", type="binary")
-        video_url = gr.Textbox(label="Video URL")
+    with main_interface:
+        gr.Markdown("# Cognibuild.ai Quick & Easy TTS ")
+        gr.Markdown("Enter text and hear it spoken aloud. Select a speaker from the dropdown, upload a custom speaker .wav file, or provide a video link.")
+        
+        with gr.Row():
+            text_input = gr.Textbox(label="Enter Text")
+            speaker_dropdown = gr.Dropdown(label="Select Speaker", choices=get_speaker_files(), value=speaker_wav)
+        
+        with gr.Row():
+            uploaded_speaker = gr.File(label="Upload Custom Speaker .wav", type="binary")
+            video_url = gr.Textbox(label="Video URL")
+        
+        generate_btn = gr.Button("Generate Audio")
+        clear_vram_btn = gr.Button("Clear VRAM")
+        audio_output = gr.Audio(label="Generated Audio")
+        
+        def manual_clear_vram():
+            clear_gpu_memory()
+            return "VRAM cleared"
+        
+        generate_btn.click(text_to_speech, inputs=[text_input, speaker_dropdown, uploaded_speaker, video_url], outputs=audio_output)
+        clear_vram_btn.click(manual_clear_vram, inputs=[], outputs=gr.Textbox(label="VRAM Status"))
     
-    generate_btn = gr.Button("Generate Audio")
-    clear_vram_btn = gr.Button("Clear VRAM")
-    audio_output = gr.Audio(label="Generated Audio")
-    
-    def manual_clear_vram():
-        clear_gpu_memory()
-        return "VRAM cleared"
-    
-    generate_btn.click(text_to_speech, inputs=[text_input, speaker_dropdown, uploaded_speaker, video_url], outputs=audio_output)
-    clear_vram_btn.click(manual_clear_vram, inputs=[], outputs=gr.Textbox(label="VRAM Status"))
+    iface.load(fn=update_gui, outputs=[loading_message, main_interface])
 
+iface.queue()
 iface.launch(inbrowser=True)
