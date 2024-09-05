@@ -108,7 +108,7 @@ def clear_gpu_memory():
     torch.cuda.empty_cache()
     gc.collect()
 
-def get_random_video_segment(video_url, segment_duration_ms=8000):
+def get_random_video_segment(video_url, segment_duration_ms=10000):
     # Download video
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -138,7 +138,7 @@ def get_random_video_segment(video_url, segment_duration_ms=8000):
     return output_path
 
 # Function to cut a random 8-second segment
-def cut_random_segment(input_audio, output_audio_path, segment_duration_ms=8000):
+def cut_random_segment(input_audio, output_audio_path, segment_duration_ms=10000):
     audio = AudioSegment.from_file(input_audio)
     audio_duration_ms = len(audio)
     if audio_duration_ms <= segment_duration_ms:
@@ -235,7 +235,7 @@ with gr.Blocks() as iface:
             load_status = gr.Textbox(label="Load Status")   
         
         with gr.Row():
-            gr.Markdown("  ")  # Empty Markdown for a blank line
+            gr.Markdown("To Transcribe: Use File Upload")  # Empty Markdown for a blank line
             gr.Markdown("  ")  # Another em
         #TTS        
         with gr.Row():
