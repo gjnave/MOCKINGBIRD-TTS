@@ -10,12 +10,83 @@ import torch
 import gc
 import time
 import threading
+import torch
+import torchaudio
+import numpy as np
+from transformers import WhisperProcessor, WhisperForConditionalGeneration
 
 # Define the TTS server URL
 url = "http://localhost:8020/tts_to_audio/"
 
 # Define the directory containing the speaker .wav files
 speaker_directory = "xtts-api-server\\speakers"
+
+#WHISPER
+# Initialize Whisper model and processor
+whisper_model = None
+whisper_processor = None
+
+def load_whisper(load_checkbox):
+    global whisper_model, whisper_processor
+    
+    if load_checkbox:
+        if whisper_model is None or whisper_processor is None:
+            whisper_model = WhisperForConditionalGeneration.from_pretrained("openai/whisper-large")
+            whisper_processor = WhisperProcessor.from_pretrained("openai/whisper-base")
+            return "Whisper model loaded successfully."
+        else:
+            return "Whisper model already loaded."
+    else:
+        return "Checkbox not checked. Model not loaded."
+
+def transcribe_audio(uploaded_audio):
+    global whisper_model, whisper_processor
+    
+    if whisper_model is None or whisper_processor is None:
+        return "Please load the Whisper model first."
+    
+    if uploaded_audio is None:
+        return "Please upload an audio file."
+    
+    try:
+        # Save the uploaded audio to a temporary file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_file:
+            temp_file.write(uploaded_audio)
+            temp_file_path = temp_file.name
+        
+        # Load audio file
+        audio, sample_rate = torchaudio.load(temp_file_path)
+        
+        # Convert to mono if stereo
+        if audio.shape[0] > 1:
+            audio = torch.mean(audio, dim=0, keepdim=True)
+        
+        # Resample if necessary
+        if sample_rate != 16000:
+            resampler = torchaudio.transforms.Resample(sample_rate, 16000)
+            audio = resampler(audio)
+        
+        # Convert to numpy array
+        audio = audio.squeeze().numpy()
+        
+        # Process audio
+        input_features = whisper_processor(audio, sampling_rate=16000, return_tensors="pt").input_features
+        
+        # Generate transcription
+        with torch.no_grad():
+            predicted_ids = whisper_model.generate(input_features)
+        
+        # Decode the predicted ids to text
+        transcription = whisper_processor.batch_decode(predicted_ids, skip_special_tokens=True)[0]
+        
+        # Clean up the temporary file
+        os.unlink(temp_file_path)
+        
+        return transcription
+    except Exception as e:
+        return f"Error during transcription: {str(e)}"
+        
+#TTS
 
 # Get the list of .wav files in the directory
 def get_speaker_files():
@@ -120,7 +191,8 @@ def text_to_speech(text, selected_speaker, uploaded_speaker, video_url):
         # Check GPU memory usage again after processing
         if get_gpu_memory_usage() > 0.9:
             clear_gpu_memory()
-
+            
+            
 def is_server_ready():
     max_attempts = 60  # Adjust this value based on how long you expect the server might take to start
     attempts = 0
@@ -135,7 +207,6 @@ def is_server_ready():
         attempts += 1
     return False
 
-# Gradio interface
 with gr.Blocks() as iface:
     loading_message = gr.Markdown("# Loading... Please wait for the server to be ready.")
     main_interface = gr.Group(visible=False)
@@ -155,7 +226,18 @@ with gr.Blocks() as iface:
     with main_interface:
         gr.Markdown("# Cognibuild.ai Quick & Easy TTS ")
         gr.Markdown("Enter text and hear it spoken aloud. Select a speaker from the dropdown, upload a custom speaker .wav file, or provide a video link.")
+ 
+        with gr.Row():
+            load_whisper_checkbox = gr.Checkbox(label="Load Whisper")
+            load_button = gr.Button("Load")    
+
+        with gr.Row():
+            load_status = gr.Textbox(label="Load Status")   
         
+        with gr.Row():
+            gr.Markdown("  ")  # Empty Markdown for a blank line
+            gr.Markdown("  ")  # Another em
+        #TTS        
         with gr.Row():
             text_input = gr.Textbox(label="Enter Text")
             speaker_dropdown = gr.Dropdown(label="Select Speaker", choices=get_speaker_files(), value=speaker_wav)
@@ -165,6 +247,7 @@ with gr.Blocks() as iface:
             video_url = gr.Textbox(label="Video URL")
         
         generate_btn = gr.Button("Generate Audio")
+        transcribe_button = gr.Button("Transcribe")  
         clear_vram_btn = gr.Button("Clear VRAM")
         audio_output = gr.Audio(label="Generated Audio")
         
@@ -174,7 +257,9 @@ with gr.Blocks() as iface:
         
         generate_btn.click(text_to_speech, inputs=[text_input, speaker_dropdown, uploaded_speaker, video_url], outputs=audio_output)
         clear_vram_btn.click(manual_clear_vram, inputs=[], outputs=gr.Textbox(label="VRAM Status"))
-    
+        load_button.click(load_whisper, inputs=load_whisper_checkbox, outputs=load_status)
+        transcribe_button.click(transcribe_audio, inputs=uploaded_speaker, outputs=text_input)    
+        
     iface.load(fn=update_gui, outputs=[loading_message, main_interface])
 
 iface.queue()
